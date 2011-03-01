@@ -155,13 +155,14 @@ class Service(SnapBill_Object):
     self.type = 'service'
 
 class API:
-  def __init__(self,username, password, server, secure=True):
+  def __init__(self,username, password, server, secure=True, headers={}):
     self.username = username
     self.password = password
     if secure: self.url = 'https://' + server
     else: self.url = 'http://' + server
 
     self._cache = {}
+    self.headers = headers
 
     global snapbill
     snapbill = self
@@ -187,11 +188,13 @@ class API:
     auth_handler = urllib2.HTTPBasicAuthHandler(password_manager)
     self.opener = urllib2.build_opener(auth_handler)
 
+    request = urllib2.Request(self.url+uri+'.'+format, headers=self.headers)
     try: 
-      u =	self.opener.open(self.url+uri+'.'+format, urllib.urlencode(param))
+      u =	self.opener.open(request, urllib.urlencode(param))
     except urllib2.URLError, e:
       print 'URLError - retry'
-      u =	self.opener.open(self.url+uri+'.'+format, urllib.urlencode(param))
+      u =	self.opener.open(request, urllib.urlencode(param))
+
     #except urllib.error.HTTPError as e:
     #u = e
     response = u.read().decode('UTF-8')
