@@ -1,5 +1,5 @@
 import simplejson as json
-import urllib2, urllib
+import urllib2, urllib, base64, struct
 
 #url = 'http://api/v1/batches/list.json'
 #
@@ -15,7 +15,42 @@ import urllib2, urllib
 def classname(name):
   return '_'.join([x[:1].upper() + x[1:].lower() for x in name.split('_')])
 
-global snapbill
+def __pad(string, multiple, char):
+  # Count how many letters passed the last multiple
+  N = len(string) % multiple
+  # Pad on the left if needed
+  if N: return ((multiple - N) * char) + string
+  else: return string
+
+
+def __decodeXidPart(part):
+  # Pad the part to the left with A=0 for b64decode to either 4 or 8 bytes
+  part = __pad(part, 4, 'A')
+  # Decode it as a binary string
+  decoded = base64.urlsafe_b64decode(part)
+  # Pad the binary string to size of an integer
+  decoded = '\0'*(4-len(decoded)) + decoded
+  # Unpack the binary string
+  return struct.unpack('!I', decoded)[0]
+
+def __encodeXidPart(part):
+  # First pack it as an integer
+  packed = struct.pack('!I', part)
+  # Ensure its three bytes or six long (=> 4 in base64)
+  packed = __pad(packed.lstrip('\0'), 3, '\0')
+  # Encode according to base64
+  encoded = base64.urlsafe_b64encode(packed)
+  # Return stripped
+  return encoded.lstrip('A')
+
+def decodeXid(xid):
+  return tuple([__decodeXidPart(x) for x in xid.split(':')])
+
+def encodeXid(resellerId, id):
+  return ':'.join([__encodeXidPart(x) for x in (resellerId, id)])
+
+global currentApi
+currentApi = None
 
 class SnapBill_Exception(Exception):
   def __init__(self, message, errors):
@@ -31,18 +66,20 @@ class SnapBill_Exception(Exception):
     for (k,x) in self.errors.items(): print (' - '+x)
 
 class SnapBill_Object(object):
-  def __new__(cls, id):
+  def __new__(cls, id, api=None):
+    if not api: api = currentApi
+
     if type(id) is dict: vid = id['id']
     else: vid = id
 
-    obj = snapbill.cache(cls.__name__, vid)
+    obj = api.cache(cls.__name__, vid)
     if not obj:
       obj = super(SnapBill_Object, cls).__new__(cls)
-      snapbill.cache(cls.__name__, vid, obj)
+      api.cache(cls.__name__, vid, obj)
 
     return obj
 
-  def __init__(self, id):
+  def __init__(self, id, api=currentApi):
     # May be called multiple times due to __new__-based cache
     if 'id' in self.__dict__: return
 
@@ -53,6 +90,7 @@ class SnapBill_Object(object):
       self.id = id
       self.data = {'id': id}
     self.fetched = False
+    self.api = api
 
   def __getattribute__(self, name):
     try: return super(SnapBill_Object, self).__getattribute__(name)
@@ -66,8 +104,7 @@ class SnapBill_Object(object):
     raise exception
 
   def fetch(self):
-    global snapbill
-    result = snapbill.post('/v1/'+self.type+'/'+str(self.id)+'/get')
+    result = self.api.post('/v1/'+self.type+'/'+str(self.id)+'/get')
     self.data = result[self.type]
     self.fetched = True
 
@@ -76,49 +113,44 @@ class SnapBill_Object(object):
     return self.data[key]
 
 class Reseller(SnapBill_Object):
-  def __init__(self, id):
-    super(Reseller, self).__init__(id)
+  def __init__(self, id, api=currentApi):
+    super(Reseller, self).__init__(id, api=api)
     self.type = 'reseller'
 
   @staticmethod
-  def list(**search): 
-    global snapbill
-    return snapbill.list('reseller', **search)
+  def list(api=currentApi, **search): 
+    return api.list('reseller', api=api, **search)
 
 class Batch(SnapBill_Object):
-  def __init__(self, id):
-    super(Batch, self).__init__(id)
+  def __init__(self, id, api=currentApi):
+    super(Batch, self).__init__(id, api=api)
     self.type = 'batch'
 
   def xml(self):
-    global snapbill
-    return snapbill.post('/v1/batch/'+str(self.id)+'/xml', format='xml', parse=False)
+    return self.api.post('/v1/batch/'+str(self.id)+'/xml', format='xml', parse=False)
 
   def update(self, data):
-    global snapbill
-    snapbill.submit('/v1/batch/'+str(self.id)+'/update', data)
+    self.api.submit('/v1/batch/'+str(self.id)+'/update', data)
 
   @staticmethod
-  def list(**search): 
-    global snapbill
-
+  def list(api=currentApi, **search): 
     if 'reseller' in search and type(search['reseller']) is list:
       search['reseller_id'] = ','.join([str(x['id']) for x in search['reseller']])
       del search['reseller']
 
-    return snapbill.list('batch', **search)
+    return api.list('batch', api=api, **search)
 
 class Batch_Client(SnapBill_Object):
-  def __init__(self, id):
-    super(Batch_Client, self).__init__(id)
+  def __init__(self, id, api=None):
+    if not api: api = currentApi
+    super(Batch_Client, self).__init__(id, api)
     self.type = 'batch_client'
 
   def error(self, message):
-    global snapbill
-    return snapbill.post('/v1/batch_client/'+str(self.id)+'/error', {'message': message}, format='xml', parse=False)
+    return self.api.post('/v1/batch_client/'+str(self.id)+'/error', {'message': message}, format='xml', parse=False)
 
   @staticmethod
-  def list(**search):
+  def list(api=currentApi, **search):
     if 'client' in search and type(search['client']) is Client:
       search['client_id'] = search['client'].id
       del search['client']
@@ -126,17 +158,15 @@ class Batch_Client(SnapBill_Object):
       search['batch_id'] = search['batch'].id
       del search['batch']
 
-    global snapbill
-    return [Batch_Client(b) for b in snapbill.post('/v1/batch_client/list', search)['list']]
+    return [Batch_Client(b) for b in api.post('/v1/batch_client/list', search)['list']]
 
 class Client(SnapBill_Object):
-  def __init__(self, id):
-    super(Client, self).__init__(id)
+  def __init__(self, id, api=currentApi):
+    super(Client, self).__init__(id, api)
     self.type = 'client'
 
   def add_service(self, **data):
-    global snapbill
-    result = snapbill.submit('/v1/client/'+str(self.id)+'/add_service', data)
+    result = self.api.submit('/v1/client/'+str(self.id)+'/add_service', data)
     return Service(result['id'])
 
   def set_payment(self, data):
@@ -144,14 +174,13 @@ class Client(SnapBill_Object):
     snapbill.submit('/v1/client/'+str(self.id)+'/set_payment', data)
 
   @staticmethod
-  def add(**data):
-    global snapbill
-    return snapbill.add('client', **data)
+  def add(api=currentApi, **data):
+    return api.add('client', **data)
 
 
 class Service(SnapBill_Object):
-  def __init__(self, id):
-    super(Service, self).__init__(id)
+  def __init__(self, id, api=currentApi):
+    super(Service, self).__init__(id, api)
     self.type = 'service'
 
 class API:
@@ -164,8 +193,8 @@ class API:
     self._cache = {}
     self.headers = headers
 
-    global snapbill
-    snapbill = self
+    global currentApi
+    currentApi = self
 
   def cache(self, cls, id, obj=None):
     if obj is None:
@@ -180,7 +209,7 @@ class API:
 
 
   def post(self, uri, param={}, format='json', parse=True):
-    print uri, param
+    print self.headers, uri, param
 
     # Could be in __init__ but gets forgotten somehow
     password_manager = urllib2.HTTPPasswordMgrWithDefaultRealm()
@@ -220,13 +249,11 @@ class API:
       return result
 
   @staticmethod
-  def add(cls, **data):
-    global snapbill
-    result = snapbill.submit('/v1/'+cls+'/add', data)
+  def add(cls, api=currentApi, **data):
+    result = api.submit('/v1/'+cls+'/add', data)
     return globals()[classname(cls)](result['id'])
 
   @staticmethod
-  def list(cls, **data):
-    global snapbill
+  def list(cls, api=currentApi, **data):
     constructor = globals()[classname(cls)]
-    return [constructor(o) for o in snapbill.post('/v1/'+cls+'/list', data)['list']]
+    return [constructor(o, api=api) for o in api.post('/v1/'+cls+'/list', data)['list']]
