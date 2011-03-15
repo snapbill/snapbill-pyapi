@@ -44,7 +44,7 @@ def __encodeXidPart(part):
   return encoded.lstrip('A')
 
 def decodeXid(xid):
-  return tuple([__decodeXidPart(x) for x in xid.split(':')])
+  return tuple([__decodeXidPart(x) for x in str(xid).split(':')])
 
 def encodeXid(resellerId, id):
   return ':'.join([__encodeXidPart(x) for x in (resellerId, id)])
