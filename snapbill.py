@@ -112,6 +112,10 @@ class SnapBill_Object(object):
     if not key in self.data and not self.fetched: self.fetch()
     return self.data[key]
 
+  def __getattr__(self, key):
+    if not key in self.data and not self.fetched: self.fetch()
+    return self.data[key]
+
 class Reseller(SnapBill_Object):
   def __init__(self, id, api=currentApi):
     super(Reseller, self).__init__(id, api=api)
