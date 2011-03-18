@@ -47,7 +47,7 @@ def decodeXid(xid):
   return tuple([__decodeXidPart(x) for x in str(xid).split(':')])
 
 def encodeXid(resellerId, id):
-  return ':'.join([__encodeXidPart(x) for x in (resellerId, id)])
+  return ':'.join([__encodeXidPart(int(x)) for x in (resellerId, id)])
 
 global currentApi
 currentApi = None
