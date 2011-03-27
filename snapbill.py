@@ -79,7 +79,9 @@ class SnapBill_Object(object):
 
     return obj
 
-  def __init__(self, id, api=currentApi):
+  def __init__(self, id, api=None):
+    if not api: api = currentApi
+
     # May be called multiple times due to __new__-based cache
     if 'id' in self.__dict__: return
 
@@ -117,16 +119,17 @@ class SnapBill_Object(object):
     return self.data[key]
 
 class Reseller(SnapBill_Object):
-  def __init__(self, id, api=currentApi):
+  def __init__(self, id, api=None):
     super(Reseller, self).__init__(id, api=api)
     self.type = 'reseller'
 
   @staticmethod
-  def list(api=currentApi, **search): 
+  def list(api=None, **search): 
+    if not api: api = currentApi
     return api.list('reseller', api=api, **search)
 
 class Batch(SnapBill_Object):
-  def __init__(self, id, api=currentApi):
+  def __init__(self, id, api=None):
     super(Batch, self).__init__(id, api=api)
     self.type = 'batch'
 
@@ -137,35 +140,33 @@ class Batch(SnapBill_Object):
     self.api.submit('/v1/batch/'+str(self.id)+'/update', data)
 
   @staticmethod
-  def list(api=currentApi, **search): 
+  def list(api=None, **search): 
+    if not api: api = currentApi
     if 'reseller' in search and type(search['reseller']) is list:
       search['reseller_id'] = ','.join([str(x['id']) for x in search['reseller']])
       del search['reseller']
 
     return api.list('batch', api=api, **search)
 
-class Batch_Client(SnapBill_Object):
+class Payment(SnapBill_Object):
   def __init__(self, id, api=None):
-    if not api: api = currentApi
-    super(Batch_Client, self).__init__(id, api)
-    self.type = 'batch_client'
+    super(Payment, self).__init__(id, api)
+    self.type = 'payment'
 
   def error(self, message):
-    return self.api.post('/v1/batch_client/'+str(self.id)+'/error', {'message': message}, format='xml', parse=False)
+    return self.api.post('/v1/payment/'+str(self.id)+'/error', {'message': message}, format='xml', parse=False)
 
   @staticmethod
-  def list(api=currentApi, **search):
+  def list(api=None, **search):
+    if not api: api = currentApi
     if 'client' in search and type(search['client']) is Client:
       search['client_id'] = search['client'].id
       del search['client']
-    if 'batch' in search and type(search['batch']) is Batch:
-      search['batch_id'] = search['batch'].id
-      del search['batch']
 
-    return [Batch_Client(b) for b in api.post('/v1/batch_client/list', search)['list']]
+    return api.list('payment', api=api, **search)
 
 class Client(SnapBill_Object):
-  def __init__(self, id, api=currentApi):
+  def __init__(self, id, api=None):
     super(Client, self).__init__(id, api)
     self.type = 'client'
 
@@ -174,16 +175,16 @@ class Client(SnapBill_Object):
     return Service(result['id'])
 
   def set_payment(self, data):
-    global snapbill
-    snapbill.submit('/v1/client/'+str(self.id)+'/set_payment', data)
+    self.api.submit('/v1/client/'+str(self.id)+'/set_payment', data)
 
   @staticmethod
-  def add(api=currentApi, **data):
+  def add(api=None, **data):
+    if not api: api = currentApi
     return api.add('client', **data)
 
 
 class Service(SnapBill_Object):
-  def __init__(self, id, api=currentApi):
+  def __init__(self, id, api=None):
     super(Service, self).__init__(id, api)
     self.type = 'service'
 
@@ -253,11 +254,13 @@ class API:
       return result
 
   @staticmethod
-  def add(cls, api=currentApi, **data):
+  def add(cls, api=None, **data):
+    if not api: api = currentApi
     result = api.submit('/v1/'+cls+'/add', data)
     return globals()[classname(cls)](result['id'])
 
   @staticmethod
-  def list(cls, api=currentApi, **data):
+  def list(cls, api=None, **data):
+    if not api: api = currentApi
     constructor = globals()[classname(cls)]
     return [constructor(o, api=api) for o in api.post('/v1/'+cls+'/list', data)['list']]
