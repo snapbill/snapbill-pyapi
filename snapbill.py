@@ -143,8 +143,7 @@ class Batch(SnapBill_Object):
   def list(api=None, **search): 
     if not api: api = currentApi
     if 'reseller' in search and type(search['reseller']) is list:
-      search['reseller_id'] = ','.join([str(x['id']) for x in search['reseller']])
-      del search['reseller']
+      search['reseller'] = ','.join([str(x['id']) for x in search['reseller']])
 
     return api.list('batch', api=api, **search)
 
