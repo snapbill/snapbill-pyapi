@@ -1,5 +1,7 @@
 import simplejson as json
 import urllib2, urllib, base64, struct
+from urllib import urlencode
+
 
 #url = 'http://api/v1/batches/list.json'
 #
@@ -212,8 +214,27 @@ class API:
       self._cache[cls][id] = obj
 
 
-  def post(self, uri, param={}, format='json', parse=True):
-    print self.headers, uri, param
+  def encode_params(self, param):
+    '''
+    urlencode params with flattening out lists and accepting encoded strings
+    '''
+    if type(param) is dict:
+      return urlencode(param)
+    elif type(param) is list:
+      return '&'.join([self.encode_params(p) for p in param])
+    elif type(param) is str:
+      return param
+    else: raise Exception("Unknown param type: "+str(type(param)))
+
+
+  def post(self, uri, params={}, format='json', parse=True):
+    # Show some logging information
+    debug = uri+'?'+str(params)
+    if len(debug) > 100: print '>>>', debug[:100] + '...'
+    else: print '>>>', debug
+
+    # Encode the params correctly
+    post = self.encode_params(params)
 
     # Could be in __init__ but gets forgotten somehow
     password_manager = urllib2.HTTPPasswordMgrWithDefaultRealm()
@@ -223,10 +244,10 @@ class API:
 
     request = urllib2.Request(self.url+uri+'.'+format, headers=self.headers)
     try: 
-      u =	self.opener.open(request, urllib.urlencode(param))
+      u =	self.opener.open(request, post)
     except urllib2.URLError, e:
       print 'URLError - retry'
-      u =	self.opener.open(request, urllib.urlencode(param))
+      u =	self.opener.open(request, post)
 
     #except urllib.error.HTTPError as e:
     #u = e
