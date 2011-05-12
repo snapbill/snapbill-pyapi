@@ -71,7 +71,9 @@ class SnapBill_Object(object):
   def __new__(cls, id, api=None):
     if not api: api = currentApi
 
-    if type(id) is dict: vid = id['id']
+    if type(id) is dict:
+      if 'xid' in id: vid = decodeXid(id['xid'])[1]
+      else: vid = id['id']
     else: vid = id
 
     obj = api.cache(cls.__name__, vid)
@@ -88,24 +90,17 @@ class SnapBill_Object(object):
     if 'id' in self.__dict__: return
 
     if type(id) is dict:
-      self.id = id['id']
+      if 'xid' in id:
+        (rid, self.id) = decodeXid(id['xid'])
+      else:
+        self.id = id['id']
       self.data = id
     else:
       self.id = id
       self.data = {'id': id}
+
     self.fetched = False
     self.api = api
-
-  def __getattribute__(self, name):
-    try: return super(SnapBill_Object, self).__getattribute__(name)
-    except AttributeError, exception: pass # keep exception for later, in case
-    
-    try:
-      id = self[name+'_id']
-      return globals()[classname(name)](id)
-    except KeyError: pass
-
-    raise exception
 
   def fetch(self):
     result = self.api.post('/v1/'+self.type+'/'+str(self.id)+'/get')
@@ -113,12 +108,19 @@ class SnapBill_Object(object):
     self.fetched = True
 
   def __getitem__(self, key):
-    if not key in self.data and not self.fetched: self.fetch()
-    return self.data[key]
+    return self.__getattr__(key)
 
   def __getattr__(self, key):
-    if not key in self.data and not self.fetched: self.fetch()
-    return self.data[key]
+    if key in self.data:
+      return self.data[key]
+    elif key+'_id' in self.data:
+      return globals()[classname(key)](self.data[key+'_id'])
+    elif not self.fetched:
+      self.fetch()
+      return self.__getattr__(key)
+
+    raise AttributeError(key+" on "+self.type+" #"+str(self.id)+" not found.")
+
 
 class Reseller(SnapBill_Object):
   def __init__(self, id, api=None):
