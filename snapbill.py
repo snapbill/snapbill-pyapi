@@ -192,7 +192,7 @@ class Service(SnapBill_Object):
     self.type = 'service'
 
 class API:
-  def __init__(self,username, password, server, secure=True, headers={}):
+  def __init__(self,username, password, server, secure=True, headers={}, logger=None):
     self.username = username
     self.password = password
     if secure: self.url = 'https://' + server
@@ -200,6 +200,7 @@ class API:
 
     self._cache = {}
     self.headers = headers
+    self.logger = logger
 
     global currentApi
     currentApi = self
@@ -231,9 +232,10 @@ class API:
 
   def post(self, uri, params={}, format='json', parse=True):
     # Show some logging information
-    debug = uri+'?'+str(params)
-    if len(debug) > 100: print '>>>', debug[:100] + '...'
-    else: print '>>>', debug
+    if self.logger:
+      debug = uri+'?'+str(params)
+      if len(debug) > 100: self.logger.debug('>>> '+debug[:100] + '...')
+      else: self.logger.debug('>>> ' + debug)
 
     # Encode the params correctly
     post = self.encode_params(params)
@@ -255,8 +257,10 @@ class API:
     #u = e
     response = u.read().decode('UTF-8')
 
-    if len(response) > 100: print '<<<', response[:100]+'...'
-    else: print '<<<', response
+    if self.logger:
+      if len(response) > 100: self.logger.debug('<<< '+response[:100]+'...')
+      else: self.logger.debug('<<< '+response)
+
     if parse:
       if format == 'json': response = json.loads(response)
 
