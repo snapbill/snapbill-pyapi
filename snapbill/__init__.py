@@ -140,6 +140,9 @@ class Batch(SnapBill_Object):
   def xml(self):
     return self.api.post('/v1/batch/'+str(self.id)+'/xml', format='xml', parse=False)
 
+  def set_state(self, state):
+    self.api.submit('/v1/batch/'+str(self.id)+'/set_state', {'state': state})
+
   def update(self, data):
     self.api.submit('/v1/batch/'+str(self.id)+'/update', data)
 
