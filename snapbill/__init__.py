@@ -1,18 +1,11 @@
 import simplejson as json
 import urllib2, urllib, base64, struct
 from urllib import urlencode
+from StringIO import StringIO
+import subprocess
+import re
+import avro.io, avro.datafile
 
-
-#url = 'http://api/v1/batches/list.json'
-#
-#values = URL({'state': 'ready'})
-#request = urllib2.Request(url, values)
-#
-#base64string = base64.encodestring('%s:%s' % (config.get('api', 'user'), config.get('api', 'password')))[:-1]
-#request.add_header("Authorization", "Basic %s" % base64string)
-#
-#response = urllib2.urlopen(request)
-#print json.load(response)
 
 def classname(name):
   return '_'.join([x[:1].upper() + x[1:].lower() for x in name.split('_')])
@@ -51,8 +44,16 @@ def decodeXid(xid):
 def encodeXid(resellerId, id):
   return ':'.join([__encodeXidPart(int(x)) for x in (resellerId, id)])
 
+def isXid(xid):
+  if re.match(r'^[A-Za-z0-9-_]+:[A-Za-z0-9-_]+$', xid):
+    return True
+  else:
+    return False
+
+
 global currentApi
 currentApi = None
+classes = {}
 
 class SnapBill_Exception(Exception):
   def __init__(self, message, errors):
@@ -73,38 +74,70 @@ class SnapBill_Object(object):
 
     if type(id) is dict:
       if 'xid' in id: vid = decodeXid(id['xid'])[1]
+      elif 'code' in id: vid = id['code']
       else: vid = id['id']
     else: vid = id
 
     obj = api.cache(cls.__name__, vid)
-    if not obj:
+
+    if obj:
+      # If we were passed data, gather it
+      if type(id) is dict:
+        obj.gather(id)
+    else:
+      # Create a new object from supplied data
       obj = super(SnapBill_Object, cls).__new__(cls)
       api.cache(cls.__name__, vid, obj)
 
     return obj
 
   def __init__(self, id, api=None):
-    if not api: api = currentApi
-
     # May be called multiple times due to __new__-based cache
-    if 'id' in self.__dict__: return
+    if 'data' in self.__dict__: return
 
+    # Initialise basic values
+    self.data = {}
+    self.api = api or currentApi
+
+    # Pull out the id, and gather known values
     if type(id) is dict:
-      if 'xid' in id:
-        (rid, self.id) = decodeXid(id['xid'])
-      else:
-        self.id = id['id']
-      self.data = id
+      self.gather(id)
     else:
-      self.id = id
-      self.data = {'id': id}
+      if isXid(id): self.gather({'xid': id})
+      else: self.gather({'id': id})
 
     self.fetched = False
-    self.api = api
+
+  def gather(self, data):
+    '''
+    Collect additional data for the object, and check it matches the known data
+    '''
+    for k in data:
+      v = data[k]
+
+      # If we should actually be loading in an object for this
+      if k in classes:
+        if v: v = classes[k](v)
+        else: v = None
+
+      if k in self.data and self.data[k] != v:
+        raise Exception('Gathered data for '+k+' of '+str(data[k])+' does not match existing value of '+str(self.data[k]))
+      self.data[k] = v
+
+  def post(self, command):
+    if 'xid' in self.data: vid = self.data['xid']
+    elif 'id' in self.data: vid = self.data['id']
+    elif 'code' in self.data: vid = self.data['code']
+    else: raise Exception('Could not find id for object')
+
+    return self.api.post('/v1/'+self.type+'/'+str(vid)+command)
 
   def fetch(self):
-    result = self.api.post('/v1/'+self.type+'/'+str(self.id)+'/get')
-    self.data = result[self.type]
+    '''
+    Fetch complete list of data from the api
+    '''
+    result = self.post('/get')
+    self.gather(result[self.type]) 
     self.fetched = True
 
   def __getitem__(self, key):
@@ -116,35 +149,45 @@ class SnapBill_Object(object):
     elif key+'_id' in self.data:
       return globals()[classname(key)](self.data[key+'_id'])
     elif not self.fetched:
+      self.api.debug('Missing key '+str(key)+'... fetching full object')
       self.fetch()
       return self.__getattr__(key)
 
     raise AttributeError(key+" on "+self.type+" #"+str(self.id)+" not found.")
 
 
-class Reseller(SnapBill_Object):
-  def __init__(self, id, api=None):
-    super(Reseller, self).__init__(id, api=api)
-    self.type = 'reseller'
-
-  @staticmethod
-  def list(api=None, **search): 
-    if not api: api = currentApi
-    return api.list('reseller', api=api, **search)
-
 class Batch(SnapBill_Object):
+  '''
+  Batch representing a group of payments
+  '''
   def __init__(self, id, api=None):
     super(Batch, self).__init__(id, api=api)
     self.type = 'batch'
 
+  def download(self):
+    # Load the avro data from snapbill
+    data = StringIO(self.api.post('/v1/batch/'+str(self.xid)+'/download', format='avro', parse=False))
+
+    # Create a 'data file' (avro file) reader
+    reader = avro.datafile.DataFileReader(data, avro.io.DatumReader())
+
+    # Gather additional batch data as available
+    self.gather(reader.next())
+
+    payments = []
+    for record in reader:
+      payments.append(Payment(record, api=self.api))
+    return payments
+
+
   def xml(self):
-    return self.api.post('/v1/batch/'+str(self.id)+'/xml', format='xml', parse=False)
+    return self.api.post('/v1/batch/'+str(self.xid)+'/xml', format='xml', parse=False)
 
   def set_state(self, state):
-    self.api.submit('/v1/batch/'+str(self.id)+'/set_state', {'state': state})
+    self.api.submit('/v1/batch/'+str(self.xid)+'/set_state', {'state': state})
 
   def update(self, data):
-    self.api.submit('/v1/batch/'+str(self.id)+'/update', data)
+    self.api.submit('/v1/batch/'+str(self.xid)+'/update', data)
 
   @staticmethod
   def list(api=None, **search): 
@@ -153,25 +196,12 @@ class Batch(SnapBill_Object):
       search['reseller'] = ','.join([str(x['id']) for x in search['reseller']])
 
     return api.list('batch', api=api, **search)
-
-class Payment(SnapBill_Object):
-  def __init__(self, id, api=None):
-    super(Payment, self).__init__(id, api)
-    self.type = 'payment'
-
-  def error(self, message):
-    return self.api.post('/v1/payment/'+str(self.id)+'/error', {'message': message}, format='xml', parse=False)
-
-  @staticmethod
-  def list(api=None, **search):
-    if not api: api = currentApi
-    if 'client' in search and type(search['client']) is Client:
-      search['client_id'] = search['client'].id
-      del search['client']
-
-    return api.list('payment', api=api, **search)
+classes['batch'] = Batch
 
 class Client(SnapBill_Object):
+  '''
+  Single client in SnapBill
+  '''
   def __init__(self, id, api=None):
     super(Client, self).__init__(id, api)
     self.type = 'client'
@@ -187,12 +217,90 @@ class Client(SnapBill_Object):
   def add(api=None, **data):
     if not api: api = currentApi
     return api.add('client', **data)
+classes['client'] = Client
+
+class File(SnapBill_Object):
+  '''
+  Uploaded file
+  '''
+  def __init__(self, id, api=None):
+    super(File, self).__init__(id, api)
+    self.type = 'file'
+
+  @staticmethod
+  def add(api=None, **data):
+    if not api: api = currentApi
+    return api.add('file', **data)
+classes['file'] = File
+
+class Payment(SnapBill_Object):
+  '''
+  Single payment from a client
+  '''
+  def __init__(self, id, api=None):
+    super(Payment, self).__init__(id, api)
+    self.type = 'payment'
+
+  def error(self, message):
+    return self.api.post('/v1/payment/'+str(self.id)+'/error', {'message': message}, format='xml', parse=False)
+
+  @staticmethod
+  def list(api=None, **search):
+    if not api: api = currentApi
+    if 'client' in search and type(search['client']) is Client:
+      search['client_id'] = search['client'].id
+      del search['client']
+
+    return api.list('payment', api=api, **search)
+classes['payment'] = Payment
+
+class Payment_Details(SnapBill_Object):
+  '''
+  Payment details of a client (bank account / credit card)
+  '''
+  def __init__(self, id, api=None):
+    super(Payment_Details, self).__init__(id, api)
+    self.type = 'payment_details'
+
+  def decrypt(self):
+    '''
+    Pass encrypted data through to gpg, and return a dict of the results
+    '''
+    process = subprocess.Popen(('gpg', '--no-tty', '-q', '-d'), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    (stdout, stderr) = process.communicate(self.encrypted)
+    return dict([x.split(':') for x in stdout.split('\n') if x])
+
+classes['payment_details'] = Payment_Details
+
+class Payment_Method(SnapBill_Object):
+  def __init__(self, id, api=None):
+    super(Payment_Method, self).__init__(id, api)
+    self.type = 'payment_method'
+classes['payment_method'] = Payment_Method
 
 
 class Service(SnapBill_Object):
+  '''
+  Single recurring service belonging to a client
+  '''
   def __init__(self, id, api=None):
     super(Service, self).__init__(id, api)
     self.type = 'service'
+classes['service'] = Service
+
+class Reseller(SnapBill_Object):
+  '''
+  Master account with own set of clients
+  '''
+  def __init__(self, id, api=None):
+    super(Reseller, self).__init__(id, api=api)
+    self.type = 'reseller'
+
+  @staticmethod
+  def list(api=None, **search): 
+    if not api: api = currentApi
+    return api.list('reseller', api=api, **search)
+classes['reseller'] = Reseller
 
 class API:
   def __init__(self,username, password, server, secure=True, headers={}, logger=None):
@@ -232,13 +340,14 @@ class API:
       return param
     else: raise Exception("Unknown param type: "+str(type(param)))
 
+  def debug(self, message):
+    if not self.logger: return
+    if len(message) > 100: self.logger.debug('>>> '+message[:100] + '...')
+    else: self.logger.debug('>>> ' + message)
 
   def post(self, uri, params={}, format='json', parse=True):
     # Show some logging information
-    if self.logger:
-      debug = uri+'?'+str(params)
-      if len(debug) > 100: self.logger.debug('>>> '+debug[:100] + '...')
-      else: self.logger.debug('>>> ' + debug)
+    self.debug(uri+'?'+str(params))
 
     # Encode the params correctly
     post = self.encode_params(params)
@@ -258,7 +367,11 @@ class API:
 
     #except urllib.error.HTTPError as e:
     #u = e
-    response = u.read().decode('UTF-8')
+    response = u.read()
+
+    # Decode everything (except avro) by UTF-8
+    if format != 'avro':
+      response = response.decode('UTF-8')
 
     if self.logger:
       if len(response) > 100: self.logger.debug('<<< '+response[:100]+'...')
