@@ -18,6 +18,14 @@ def __pad(string, multiple, char):
   else: return string
 
 
+def extend(*args):
+  base = None
+  for k in args:
+    if base is None: base = k
+    else: base.update(k)
+  return base
+
+
 def __decodeXidPart(part):
   # Pad the part to the left with A=0 for b64decode to either 4 or 8 bytes
   part = __pad(part, 4, 'A')
@@ -45,7 +53,7 @@ def encodeXid(resellerId, id):
   return ':'.join([__encodeXidPart(int(x)) for x in (resellerId, id)])
 
 def isXid(xid):
-  if re.match(r'^[A-Za-z0-9-_]+:[A-Za-z0-9-_]+$', xid):
+  if type(xid) is str and re.match(r'^[A-Za-z0-9-_]+:[A-Za-z0-9-_]+$', xid):
     return True
   else:
     return False
@@ -53,7 +61,6 @@ def isXid(xid):
 
 global currentApi
 currentApi = None
-classes = {}
 
 class SnapBill_Exception(Exception):
   def __init__(self, message, errors):
@@ -103,7 +110,9 @@ class SnapBill_Object(object):
     if type(id) is dict:
       self.gather(id)
     else:
-      if isXid(id): self.gather({'xid': id})
+      if isXid(id):
+        (rid, oid) = decodeXid(id)
+        self.gather({'id': oid, 'xid': id, 'reseller': {'id': rid}})
       else: self.gather({'id': id})
 
     self.fetched = False
@@ -116,8 +125,8 @@ class SnapBill_Object(object):
       v = data[k]
 
       # If we should actually be loading in an object for this
-      if k in classes:
-        if v: v = classes[k](v)
+      if classname(k) in globals():
+        if v: v = globals()[classname(k)](v)
         else: v = None
 
       if k in self.data and self.data[k] != v:
@@ -149,7 +158,7 @@ class SnapBill_Object(object):
     elif key+'_id' in self.data:
       return globals()[classname(key)](self.data[key+'_id'])
     elif not self.fetched:
-      self.api.debug('Missing key '+str(key)+'... fetching full object')
+      self.api.debug('Missing '+self.type+'.'+str(key)+'; fetching full object')
       self.fetch()
       return self.__getattr__(key)
 
@@ -166,18 +175,12 @@ class Batch(SnapBill_Object):
 
   def download(self):
     # Load the avro data from snapbill
-    data = StringIO(self.api.post('/v1/batch/'+str(self.xid)+'/download', format='avro', parse=False))
-
-    # Create a 'data file' (avro file) reader
-    reader = avro.datafile.DataFileReader(data, avro.io.DatumReader())
+    records = self.api.post('/v1/batch/'+str(self.xid)+'/download', format='json', returnStream=True, parse=True)
 
     # Gather additional batch data as available
-    self.gather(reader.next())
+    self.gather(records.next())
 
-    payments = []
-    for record in reader:
-      payments.append(Payment(record, api=self.api))
-    return payments
+    return (Payment(record, api=self.api) for record in records)
 
 
   def xml(self):
@@ -196,7 +199,6 @@ class Batch(SnapBill_Object):
       search['reseller'] = ','.join([str(x['id']) for x in search['reseller']])
 
     return api.list('batch', api=api, **search)
-classes['batch'] = Batch
 
 class Client(SnapBill_Object):
   '''
@@ -217,7 +219,6 @@ class Client(SnapBill_Object):
   def add(api=None, **data):
     if not api: api = currentApi
     return api.add('client', **data)
-classes['client'] = Client
 
 class File(SnapBill_Object):
   '''
@@ -231,7 +232,6 @@ class File(SnapBill_Object):
   def add(api=None, **data):
     if not api: api = currentApi
     return api.add('file', **data)
-classes['file'] = File
 
 class Payment(SnapBill_Object):
   '''
@@ -252,7 +252,6 @@ class Payment(SnapBill_Object):
       del search['client']
 
     return api.list('payment', api=api, **search)
-classes['payment'] = Payment
 
 class Payment_Details(SnapBill_Object):
   '''
@@ -270,14 +269,10 @@ class Payment_Details(SnapBill_Object):
     (stdout, stderr) = process.communicate(self.encrypted)
     return dict([x.split(':') for x in stdout.split('\n') if x])
 
-classes['payment_details'] = Payment_Details
-
 class Payment_Method(SnapBill_Object):
   def __init__(self, id, api=None):
     super(Payment_Method, self).__init__(id, api)
     self.type = 'payment_method'
-classes['payment_method'] = Payment_Method
-
 
 class Service(SnapBill_Object):
   '''
@@ -286,7 +281,6 @@ class Service(SnapBill_Object):
   def __init__(self, id, api=None):
     super(Service, self).__init__(id, api)
     self.type = 'service'
-classes['service'] = Service
 
 class Reseller(SnapBill_Object):
   '''
@@ -300,12 +294,14 @@ class Reseller(SnapBill_Object):
   def list(api=None, **search): 
     if not api: api = currentApi
     return api.list('reseller', api=api, **search)
-classes['reseller'] = Reseller
 
 class API:
   def __init__(self,username, password, server, secure=True, headers={}, logger=None):
     self.username = username
     self.password = password
+    self.server = server
+    self.secure = secure
+
     if secure: self.url = 'https://' + server
     else: self.url = 'http://' + server
 
@@ -342,12 +338,12 @@ class API:
 
   def debug(self, message):
     if not self.logger: return
-    if len(message) > 100: self.logger.debug('>>> '+message[:100] + '...')
-    else: self.logger.debug('>>> ' + message)
+    if len(message) > 100: self.logger.debug(message[:100] + '...')
+    else: self.logger.debug(message)
 
-  def post(self, uri, params={}, format='json', parse=True):
+  def post(self, uri, params={}, format='json', returnStream=False, parse=True):
     # Show some logging information
-    self.debug(uri+'?'+str(params))
+    self.debug('>>> '+self.url+uri+'?'+str(extend({}, params, self.headers)))
 
     # Encode the params correctly
     post = self.encode_params(params)
@@ -360,27 +356,36 @@ class API:
 
     request = urllib2.Request(self.url+uri+'.'+format, headers=self.headers)
     try: 
-      u =	self.opener.open(request, post)
-    except urllib2.URLError, e:
-      print 'URLError - retry'
-      u =	self.opener.open(request, post)
+      response = self.opener.open(request, post)
+    except urllib2.HTTPError, e:
+      self.debug("HTTPError("+str(e.code)+"): "+e.read())
+      raise e
+
+    if returnStream:
+      if self.logger:
+        self.logger.debug('<<< [data stream]')
+
+      if not parse:
+        return response
+      elif format is 'json':
+        return (json.loads(x.decode('UTF-8')) for x in response)
+      elif format is 'avro':
+        return avro.datafile.DataFileReader(response, avro.io.DatumReader())
+      else:
+        raise Exception('Could not parse format '+format+' as stream')
 
     #except urllib.error.HTTPError as e:
     #u = e
-    response = u.read()
-
-    # Decode everything (except avro) by UTF-8
-    if format != 'avro':
-      response = response.decode('UTF-8')
+    data = response.read().decode('UTF-8')
 
     if self.logger:
-      if len(response) > 100: self.logger.debug('<<< '+response[:100]+'...')
-      else: self.logger.debug('<<< '+response)
+      if len(data) > 100: self.logger.debug('<<< '+data[:100]+'...')
+      else: self.logger.debug('<<< '+data)
 
     if parse:
-      if format == 'json': response = json.loads(response)
+      if format == 'json': data = json.loads(data)
 
-    return response
+    return data
 
   def submit(self, uri, param={}):
     # Convert data:{} into data-x
@@ -399,7 +404,7 @@ class API:
   def add(cls, api=None, **data):
     if not api: api = currentApi
     result = api.submit('/v1/'+cls+'/add', data)
-    return globals()[classname(cls)](result['id'])
+    return globals()[classname(cls)](result['id'], api)
 
   @staticmethod
   def list(cls, api=None, **data):
