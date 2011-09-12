@@ -53,7 +53,7 @@ def encodeXid(resellerId, id):
   return ':'.join([__encodeXidPart(int(x)) for x in (resellerId, id)])
 
 def isXid(xid):
-  if type(xid) is str and re.match(r'^[A-Za-z0-9-_]+:[A-Za-z0-9-_]+$', xid):
+  if (type(xid) is str or type(xid) is unicode) and (re.match(r'^[A-Za-z0-9-_]+:[A-Za-z0-9-_]+$', xid)):
     return True
   else:
     return False
