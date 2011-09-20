@@ -342,11 +342,11 @@ class API:
     else: self.logger.debug(message)
 
   def post(self, uri, params={}, format='json', returnStream=False, parse=True):
-    # Show some logging information
-    self.debug('>>> '+self.url+uri+'?'+str(extend({}, params, self.headers)))
-
     # Encode the params correctly
     post = self.encode_params(params)
+
+    # Show some logging information
+    self.debug('>>> '+self.url+uri+'?'+post+(' '+str(self.headers) if self.headers else ''))
 
     # Could be in __init__ but gets forgotten somehow
     password_manager = urllib2.HTTPPasswordMgrWithDefaultRealm()
