@@ -242,7 +242,7 @@ class Payment(SnapBill_Object):
     self.type = 'payment'
 
   def error(self, message):
-    return self.api.post('/v1/payment/'+str(self.id)+'/error', {'message': message}, format='xml', parse=False)
+    return self.api.post('/v1/payment/'+str(self.xid)+'/error', {'message': message}, format='xml', parse=False)
 
   @staticmethod
   def list(api=None, **search):
