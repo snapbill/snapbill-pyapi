@@ -4,7 +4,10 @@ from urllib import urlencode
 from StringIO import StringIO
 import subprocess
 import re
-import avro.io, avro.datafile
+try:
+  import avro.io, avro.datafile
+except ImportError, e:
+  pass
 
 
 def classname(name):
@@ -370,6 +373,8 @@ class API:
       elif format is 'json':
         return (json.loads(x.decode('UTF-8')) for x in response)
       elif format is 'avro':
+        if not avro:
+          raise Exception('Required avro module was not found.')
         return avro.datafile.DataFileReader(response, avro.io.DatumReader())
       else:
         raise Exception('Could not parse format '+format+' as stream')
