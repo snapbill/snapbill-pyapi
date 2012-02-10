@@ -403,8 +403,12 @@ class API:
   @staticmethod
   def add(cls, api=None, **data):
     if not api: api = currentApi
-    result = api.submit('/v1/'+cls+'/add', data)
-    return globals()[classname(cls)](result['id'], api)
+    result = api.post('/v1/'+cls+'/add', data)
+
+    if 'status' in result and result['status'] == 'error':
+      raise SnapBill_Exception(result['message'], result['errors'])
+
+    return globals()[classname(cls)](result[cls], api)
 
   @staticmethod
   def list(cls, api=None, **data):
