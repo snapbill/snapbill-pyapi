@@ -52,8 +52,8 @@ def __encodeXidPart(part):
 def decodeXid(xid):
   return tuple([__decodeXidPart(x) for x in str(xid).split(':')])
 
-def encodeXid(resellerId, id):
-  return ':'.join([__encodeXidPart(int(x)) for x in (resellerId, id)])
+def encodeXid(accountId, id):
+  return ':'.join([__encodeXidPart(int(x)) for x in (accountId, id)])
 
 def isXid(xid):
   if (type(xid) is str or type(xid) is unicode) and (re.match(r'^[A-Za-z0-9-_]+:[A-Za-z0-9-_]+$', xid)):
@@ -115,7 +115,7 @@ class SnapBill_Object(object):
     else:
       if isXid(id):
         (rid, oid) = decodeXid(id)
-        self.gather({'id': oid, 'xid': id, 'reseller': {'id': rid}})
+        self.gather({'id': oid, 'xid': id, 'account': {'id': rid}})
       else: self.gather({'id': id})
 
     self.fetched = False
@@ -198,8 +198,8 @@ class Batch(SnapBill_Object):
   @staticmethod
   def list(api=None, **search): 
     if not api: api = currentApi
-    if 'reseller' in search and type(search['reseller']) is list:
-      search['reseller'] = ','.join([str(x['id']) for x in search['reseller']])
+    if 'account' in search and type(search['account']) is list:
+      search['account'] = ','.join([str(x['id']) for x in search['account']])
 
     return api.list('batch', api=api, **search)
 
@@ -291,12 +291,12 @@ class Reseller(SnapBill_Object):
   '''
   def __init__(self, id, api=None):
     super(Reseller, self).__init__(id, api=api)
-    self.type = 'reseller'
+    self.type = 'account'
 
   @staticmethod
   def list(api=None, **search): 
     if not api: api = currentApi
-    return api.list('reseller', api=api, **search)
+    return api.list('account', api=api, **search)
 
 class API:
   def __init__(self,username, password, server, secure=True, headers={}, logger=None):
