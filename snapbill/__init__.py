@@ -285,12 +285,12 @@ class Service(SnapBill_Object):
     super(Service, self).__init__(id, api)
     self.type = 'service'
 
-class Reseller(SnapBill_Object):
+class Account(SnapBill_Object):
   '''
   Master account with own set of clients
   '''
   def __init__(self, id, api=None):
-    super(Reseller, self).__init__(id, api=api)
+    super(Account, self).__init__(id, api=api)
     self.type = 'account'
 
   @staticmethod
