@@ -201,6 +201,9 @@ class Batch(SnapBill_Object):
     if 'account' in search and type(search['account']) is list:
       search['account'] = ','.join([str(x['id']) for x in search['account']])
 
+    if 'state' in search and not type(search['state']) is list:
+      search['state'] = [search['state']]
+
     return api.list('batch', api=api, **search)
 
 class Client(SnapBill_Object):
@@ -332,7 +335,11 @@ class API:
     urlencode params with flattening out lists and accepting encoded strings
     '''
     if type(param) is dict:
-      return urlencode(param)
+      # Append [] to any list types
+      items = [(k+'[]', v) if type(v) is list else (k,v)
+                for (k,v) in param.items()]
+      
+      return urlencode(items, True)
     elif type(param) is list:
       return '&'.join([self.encode_params(p) for p in param])
     elif type(param) is str:
