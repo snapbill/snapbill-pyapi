@@ -368,7 +368,7 @@ class API:
     try: 
       response = self.opener.open(request, post)
     except urllib2.HTTPError, e:
-      self.debug("HTTPError("+str(e.code)+"): "+e.read())
+      self.debug("HTTPError("+str(e.code)+"): "+str(e))
       raise e
 
     if returnStream:
