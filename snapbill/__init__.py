@@ -132,7 +132,7 @@ class SnapBill_Object(object):
         if v: v = globals()[classname(k)](v)
         else: v = None
 
-      if k in self.data and self.data[k] != v:
+      if k != "depth" and k in self.data and self.data[k] != v:
         raise Exception('Gathered data for '+k+' of '+str(data[k])+' does not match existing value of '+str(self.data[k]))
       self.data[k] = v
 
