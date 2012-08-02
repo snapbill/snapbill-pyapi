@@ -61,9 +61,8 @@ def isXid(xid):
   else:
     return False
 
-
-global currentApi
-currentApi = None
+global currentConnection
+currentConnection = None
 
 class SnapBill_Exception(Exception):
   def __init__(self, message, errors):
@@ -78,9 +77,17 @@ class SnapBill_Exception(Exception):
   def print_errors(self):
     for (k,x) in self.errors.items(): print (' - '+x)
 
+
+def ensureConnection(connection):
+  'Ensure an api connection (use current if available)'
+  if connection: return connection
+  elif currentConnection: return currentConnection
+  else:
+    raise Exception('SnapBill API is currently not connected')
+
 class SnapBill_Object(object):
-  def __new__(cls, id, api=None):
-    if not api: api = currentApi
+  def __new__(cls, id, connection=None):
+    connection = ensureConnection(connection)
 
     if type(id) is dict:
       if 'xid' in id: vid = decodeXid(id['xid'])[1]
@@ -88,7 +95,7 @@ class SnapBill_Object(object):
       else: vid = id['id']
     else: vid = id
 
-    obj = api.cache(cls.__name__, vid)
+    obj = connection.cache(cls.__name__, vid)
 
     if obj:
       # If we were passed data, gather it
@@ -97,17 +104,17 @@ class SnapBill_Object(object):
     else:
       # Create a new object from supplied data
       obj = super(SnapBill_Object, cls).__new__(cls)
-      api.cache(cls.__name__, vid, obj)
+      connection.cache(cls.__name__, vid, obj)
 
     return obj
 
-  def __init__(self, id, api=None):
+  def __init__(self, id, connection=None):
     # May be called multiple times due to __new__-based cache
     if 'data' in self.__dict__: return
 
     # Initialise basic values
     self.data = {}
-    self.api = api or currentApi
+    self.connection = ensureConnection(connection)
 
     # Pull out the id, and gather known values
     if type(id) is dict:
@@ -128,8 +135,8 @@ class SnapBill_Object(object):
       v = data[k]
 
       # If we should actually be loading in an object for this
-      if classname(k) in globals():
-        if v: v = globals()[classname(k)](v)
+      if self.connection.hasFactory(classname(k)):
+        if v: v = self.connection.factory(classname(k), v)
         else: v = None
 
       if k in self.data and self.data[k] != v:
@@ -142,7 +149,7 @@ class SnapBill_Object(object):
     elif 'code' in self.data: vid = self.data['code']
     else: raise Exception('Could not find id for object')
 
-    return self.api.post('/v1/'+self.type+'/'+str(vid)+command)
+    return self.connection.post('/v1/'+self.type+'/'+str(vid)+command)
 
   def fetch(self):
     '''
@@ -161,7 +168,7 @@ class SnapBill_Object(object):
     elif key+'_id' in self.data:
       return globals()[classname(key)](self.data[key+'_id'])
     elif not self.fetched:
-      self.api.debug('Missing '+self.type+'.'+str(key)+'; fetching full object')
+      self.connection.debug('Missing '+self.type+'.'+str(key)+'; fetching full object')
       self.fetch()
       return self.__getattr__(key)
 
@@ -172,136 +179,124 @@ class Batch(SnapBill_Object):
   '''
   Batch representing a group of payments
   '''
-  def __init__(self, id, api=None):
-    super(Batch, self).__init__(id, api=api)
+  def __init__(self, id, connection=None):
+    super(Batch, self).__init__(id, connection=connection)
     self.type = 'batch'
 
   def download(self):
     # Load the avro data from snapbill
-    records = self.api.post('/v1/batch/'+str(self.xid)+'/download', format='json', returnStream=True, parse=True)
+    records = self.connection.post('/v1/batch/'+str(self.xid)+'/download', format='json', returnStream=True, parse=True)
 
     # Gather additional batch data as available
     self.gather(records.next())
 
-    return (Payment(record, api=self.api) for record in records)
+    return (Payment(record, connection=self.connection) for record in records)
 
 
   def xml(self):
-    return self.api.post('/v1/batch/'+str(self.xid)+'/xml', format='xml', parse=False)
+    return self.connection.post('/v1/batch/'+str(self.xid)+'/xml', format='xml', parse=False)
 
   def set_state(self, state):
-    self.api.submit('/v1/batch/'+str(self.xid)+'/set_state', {'state': state})
+    self.connection.submit('/v1/batch/'+str(self.xid)+'/set_state', {'state': state})
 
   def update(self, data):
-    self.api.submit('/v1/batch/'+str(self.xid)+'/update', data)
+    self.connection.submit('/v1/batch/'+str(self.xid)+'/update', data)
 
   @staticmethod
-  def list(api=None, **search): 
-    if not api: api = currentApi
+  def list(connection=None, **search): 
+
     if 'account' in search and type(search['account']) is list:
       search['account'] = ','.join([str(x['id']) for x in search['account']])
 
     if 'state' in search and not type(search['state']) is list:
       search['state'] = [search['state']]
 
-    return api.list('batch', api=api, **search)
+    return ensureConnection(connection).list('batch', **search)
 
 class Client(SnapBill_Object):
   '''
   Single client in SnapBill
   '''
-  def __init__(self, id, api=None):
-    super(Client, self).__init__(id, api)
+  def __init__(self, id, connection=None):
+    super(Client, self).__init__(id, connection)
     self.type = 'client'
 
   def add_service(self, **data):
-    result = self.api.submit('/v1/client/'+str(self.id)+'/add_service', data)
+    result = self.connection.submit('/v1/client/'+str(self.id)+'/add_service', data)
     return Service(result['id'])
 
   def set_payment(self, data):
-    self.api.submit('/v1/client/'+str(self.id)+'/set_payment', data)
+    self.connection.submit('/v1/client/'+str(self.id)+'/set_payment', data)
 
   @staticmethod
-  def add(api=None, **data):
-    if not api: api = currentApi
-    return api.add('client', **data)
+  def add(connection=None, **data):
+    return ensureConnection(connection).add('client', **data)
 
 class File(SnapBill_Object):
   '''
   Uploaded file
   '''
-  def __init__(self, id, api=None):
-    super(File, self).__init__(id, api)
+  def __init__(self, id, connection=None):
+    super(File, self).__init__(id, connection)
     self.type = 'file'
 
   @staticmethod
-  def add(api=None, **data):
-    if not api: api = currentApi
-    return api.add('file', **data)
+  def add(connection=None, **data):
+    return ensureConnection(connection).add('file', **data)
 
 class Payment(SnapBill_Object):
   '''
   Single payment from a client
   '''
-  def __init__(self, id, api=None):
-    super(Payment, self).__init__(id, api)
+  def __init__(self, id, connection=None):
+    super(Payment, self).__init__(id, connection)
     self.type = 'payment'
 
   def error(self, message):
-    return self.api.post('/v1/payment/'+str(self.xid)+'/error', {'message': message}, format='xml', parse=False)
+    return self.connection.post('/v1/payment/'+str(self.xid)+'/error', {'message': message}, format='xml', parse=False)
 
   @staticmethod
-  def list(api=None, **search):
-    if not api: api = currentApi
+  def list(connection=None, **search):
     if 'client' in search and type(search['client']) is Client:
       search['client_id'] = search['client'].id
       del search['client']
 
-    return api.list('payment', api=api, **search)
+    return ensureConnection(connection).list('payment', **search)
 
 class Payment_Details(SnapBill_Object):
   '''
   Payment details of a client (bank account / credit card)
   '''
-  def __init__(self, id, api=None):
-    super(Payment_Details, self).__init__(id, api)
+  def __init__(self, id, connection=None):
+    super(Payment_Details, self).__init__(id, connection)
     self.type = 'payment_details'
 
-  def decrypt(self):
-    '''
-    Pass encrypted data through to gpg, and return a dict of the results
-    '''
-    process = subprocess.Popen(('gpg', '--no-tty', '-q', '-d'), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    (stdout, stderr) = process.communicate(self.encrypted)
-    return dict([x.split(':') for x in stdout.split('\n') if x])
-
 class Payment_Method(SnapBill_Object):
-  def __init__(self, id, api=None):
-    super(Payment_Method, self).__init__(id, api)
+  def __init__(self, id, connection=None):
+    super(Payment_Method, self).__init__(id, connection)
     self.type = 'payment_method'
 
 class Service(SnapBill_Object):
   '''
   Single recurring service belonging to a client
   '''
-  def __init__(self, id, api=None):
-    super(Service, self).__init__(id, api)
+  def __init__(self, id, connection=None):
+    super(Service, self).__init__(id, connection)
     self.type = 'service'
 
 class Account(SnapBill_Object):
   '''
   Master account with own set of clients
   '''
-  def __init__(self, id, api=None):
-    super(Account, self).__init__(id, api=api)
+  def __init__(self, id, connection=None):
+    super(Account, self).__init__(id, connection=connection)
     self.type = 'account'
 
   @staticmethod
-  def list(api=None, **search): 
-    if not api: api = currentApi
-    return api.list('account', api=api, **search)
+  def list(connection=None, **search): 
+    return ensureConnection(connection).list('account', **search)
 
-class API:
+class Connection(object):
   def __init__(self,username, password, server, secure=True, headers={}, logger=None):
     self.username = username
     self.password = password
@@ -315,8 +310,8 @@ class API:
     self.headers = headers
     self.logger = logger
 
-    global currentApi
-    currentApi = self
+    global currentConnection
+    currentConnection = self
 
   def cache(self, cls, id, obj=None):
     if obj is None:
@@ -368,7 +363,7 @@ class API:
     try: 
       response = self.opener.open(request, post)
     except urllib2.HTTPError, e:
-      self.debug("HTTPError("+str(e.code)+"): "+e.read())
+      self.debug("HTTPError("+str(e.code)+")")
       raise e
 
     if returnStream:
@@ -412,18 +407,20 @@ class API:
     else:
       return result
 
-  @staticmethod
-  def add(cls, api=None, **data):
-    if not api: api = currentApi
-    result = api.post('/v1/'+cls+'/add', data)
+  def hasFactory(self, cls):
+    return (cls in globals())
+
+  def factory(self, cls, ident):
+    constructor = globals()[cls]
+    return constructor(ident, connection=self)
+
+  def add(self, cls, **data):
+    result = self.post('/v1/'+cls+'/add', data)
 
     if 'status' in result and result['status'] == 'error':
       raise SnapBill_Exception(result['message'], result['errors'])
 
-    return globals()[classname(cls)](result[cls], api)
+    return self.factory(classname(cls), results[cls])
 
-  @staticmethod
-  def list(cls, api=None, **data):
-    if not api: api = currentApi
-    constructor = globals()[classname(cls)]
-    return [constructor(o, api=api) for o in api.post('/v1/'+cls+'/list', data)['list']]
+  def list(self, cls, **data):
+    return [self.factory(classname(cls), obj) for obj in self.post('/v1/'+cls+'/list', data)['list']]
