@@ -1,5 +1,5 @@
 import snapbill
-from snapbill.util import ensureConnection, classname
+from snapbill.util import ensureConnection
 from snapbill.xid import isXid, decodeXid
 
 class Base(object):
@@ -52,8 +52,8 @@ class Base(object):
       v = data[k]
 
       # If we should actually be loading in an object for this
-      if self.connection.hasFactory(classname(k)):
-        if v: v = self.connection.factory(classname(k), v)
+      if self.connection.hasFactory(k):
+        if v: v = self.connection.factory(k, v)
         else: v = None
 
       if k != "depth" and k in self.data and self.data[k] != v:
@@ -83,7 +83,7 @@ class Base(object):
     if key in self.data:
       return self.data[key]
     elif key+'_id' in self.data:
-      return globals()[classname(key)](self.data[key+'_id'])
+      return self.connection.factory(key, self.data[key+'_id'])
     elif not self.fetched:
       self.connection.debug('Missing '+self.type+'.'+str(key)+'; fetching full object')
       self.fetch()

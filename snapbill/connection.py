@@ -116,10 +116,10 @@ class Connection(object):
       return result
 
   def hasFactory(self, cls):
-    return hasattr(snapbill.objects, cls)
+    return hasattr(snapbill.objects, classname(cls))
 
   def factory(self, cls, ident):
-    constructor = getattr(snapbill.objects, cls)
+    constructor = getattr(snapbill.objects, classname(cls))
     return constructor(ident, connection=self)
 
   def add(self, cls, **data):
@@ -128,9 +128,9 @@ class Connection(object):
     if 'status' in result and result['status'] == 'error':
       raise SnapBill_Exception(result['message'], result['errors'])
 
-    return self.factory(classname(cls), results[cls])
+    return self.factory(cls, results[cls])
 
   def list(self, cls, **data):
-    return [self.factory(classname(cls), obj) for obj in self.post('/v1/'+cls+'/list', data)['list']]
+    return [self.factory(cls, obj) for obj in self.post('/v1/'+cls+'/list', data)['list']]
 
 
