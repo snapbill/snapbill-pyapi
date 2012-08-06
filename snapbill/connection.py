@@ -128,7 +128,7 @@ class Connection(object):
     if 'status' in result and result['status'] == 'error':
       raise SnapBill_Exception(result['message'], result['errors'])
 
-    return self.factory(cls, results[cls])
+    return self.factory(cls, result[cls])
 
   def list(self, cls, **data):
     return [self.factory(cls, obj) for obj in self.post('/v1/'+cls+'/list', data)['list']]
