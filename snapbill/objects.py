@@ -97,6 +97,14 @@ class Service(snapbill.Base):
     super(Service, self).__init__(id, connection)
     self.type = 'service'
 
+class Currency(snapbill.Base):
+  '''
+  Details about a specific currency
+  '''
+  def __init__(self, id, connection=None):
+    super(Currency, self).__init__(id, connection)
+    self.type = 'currency'
+
 class Account(snapbill.Base):
   '''
   Master account with own set of clients
