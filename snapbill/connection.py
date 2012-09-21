@@ -6,7 +6,7 @@ from util import SnapBill_Exception, setConnection, classname
 import snapbill.objects
 
 class Connection(object):
-  def __init__(self,username, password, server, secure=True, headers={}, logger=None):
+  def __init__(self,username, password, server='api.snapbill.com', secure=True, headers={}, logger=None):
     self.username = username
     self.password = password
     self.server = server

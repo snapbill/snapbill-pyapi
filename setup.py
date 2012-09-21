@@ -14,13 +14,16 @@ CLASSIFIERS = [
 KEYWORDS = 'snapbill api wrapper'
 
 
-setup(name = 'snapbill_pyapi',
-    version = "0.1",
-    description = """SnapBill API v1 wrapper for Python.""",
+setup(name = 'snapbill',
+    version = "0.2",
+    description = """Wrapper for the SnapBill v1 API.""",
     author = "Josh Yudaken",
     url = "https://github.com/snapbill/snapbill-pyapi",
     packages = find_packages(),
-    #download_url = "http://pypi.python.org/pypi/snapbill_pyapi/",
+    download_url = "http://pypi.python.org/pypi/snapbill/",
+    install_requires=[
+      "simplejson>=2.0.0"
+    ],
     classifiers = CLASSIFIERS,
     keywords = KEYWORDS,
     zip_safe = True,
