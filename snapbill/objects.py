@@ -13,10 +13,12 @@ class Batch(snapbill.Base):
     self.connection.submit('/v1/batch/'+str(self.xid)+'/set_state', {'state': state})
 
   def update(self, data):
-    self.connection.submit('/v1/batch/'+str(self.xid)+'/update', data)
+    result = self.submit('update', data)
+    self.gather(result['batch'], overwrite=True)
+    return result
 
   @staticmethod
-  def list(connection=None, **search): 
+  def list(search, connection=None): 
 
     if 'account' in search and type(search['account']) is list:
       search['account'] = ','.join([str(x['id']) for x in search['account']])
@@ -24,7 +26,7 @@ class Batch(snapbill.Base):
     if 'state' in search and not type(search['state']) is list:
       search['state'] = [search['state']]
 
-    return ensureConnection(connection).list('batch', **search)
+    return ensureConnection(connection).list('batch', search)
 
 class Client(snapbill.Base):
   '''
@@ -34,16 +36,21 @@ class Client(snapbill.Base):
     super(Client, self).__init__(id, connection)
     self.type = 'client'
 
-  def add_service(self, **data):
-    result = self.connection.submit('/v1/client/'+str(self.id)+'/add_service', data)
+  def add_service(self, data):
+    result = self.submit('add_service', data)
     return Service(result['id'])
 
   def set_payment(self, data):
-    self.connection.submit('/v1/client/'+str(self.id)+'/set_payment', data)
+    return self.submit('set_payment', data)
+
+  def update(self, data):
+    result = self.submit('update', data)
+    self.gather(result['client'], overwrite=True)
+    return result
 
   @staticmethod
-  def add(connection=None, **data):
-    return ensureConnection(connection).add('client', **data)
+  def add(data, connection=None):
+    return ensureConnection(connection).add('client', data)
 
 class File(snapbill.Base):
   '''
@@ -54,8 +61,8 @@ class File(snapbill.Base):
     self.type = 'file'
 
   @staticmethod
-  def add(connection=None, **data):
-    return ensureConnection(connection).add('file', **data)
+  def add(data, connection=None):
+    return ensureConnection(connection).add('file', data)
 
 class Payment(snapbill.Base):
   '''
@@ -69,12 +76,12 @@ class Payment(snapbill.Base):
     return self.connection.post('/v1/payment/'+str(self.xid)+'/error', {'message': message}, format='xml', parse=False)
 
   @staticmethod
-  def list(connection=None, **search):
+  def list(search, connection=None):
     if 'client' in search and type(search['client']) is Client:
       search['client_id'] = search['client'].id
       del search['client']
 
-    return ensureConnection(connection).list('payment', **search)
+    return ensureConnection(connection).list('payment', search)
 
 class Payment_Details(snapbill.Base):
   '''
@@ -114,6 +121,6 @@ class Account(snapbill.Base):
     self.type = 'account'
 
   @staticmethod
-  def list(connection=None, **search): 
-    return ensureConnection(connection).list('account', **search)
+  def list(search, connection=None): 
+    return ensureConnection(connection).list('account', search)
 

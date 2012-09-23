@@ -44,7 +44,7 @@ class Base(object):
 
     self.fetched = False
 
-  def gather(self, data):
+  def gather(self, data, overwrite=False):
     '''
     Collect additional data for the object, and check it matches the known data
     '''
@@ -56,17 +56,24 @@ class Base(object):
         if v: v = self.connection.factory(k, v)
         else: v = None
 
-      if k != "depth" and k in self.data and self.data[k] != v:
+      if (not overwrite) and (k != "depth") and (k in self.data) and (self.data[k] != v):
         raise Exception('Gathered data for '+k+' of '+str(data[k])+' does not match existing value of '+str(self.data[k]))
+
       self.data[k] = v
 
-  def post(self, command):
+  def get_uri(self):
     if 'xid' in self.data: vid = self.data['xid']
     elif 'id' in self.data: vid = self.data['id']
     elif 'code' in self.data: vid = self.data['code']
     else: raise Exception('Could not find id for object')
 
-    return self.connection.post('/v1/'+self.type+'/'+str(vid)+command)
+    return '/v1/'+self.type+'/'+str(vid)
+
+  def submit(self, command, data={}):
+    return self.connection.submit(self.get_uri()+'/'+command, data)
+
+  def post(self, command, data={}):
+    return self.connection.post(self.get_uri()+'/'+command, data)
 
   def fetch(self):
     '''

@@ -1,3 +1,6 @@
+import os
+import ConfigParser
+
 import snapbill
 
 global currentConnection
@@ -9,10 +12,32 @@ def setConnection(connection):
 
 def ensureConnection(connection):
   'Ensure an api connection (use current if available)'
-  if connection: return connection
-  elif currentConnection: return currentConnection
+  # If a connection was provided, use than one
+  if connection:
+    return connection
+  # If there was a connection already open, use that
+  elif currentConnection:
+    return currentConnection
+  # Finally try create a new connection
   else:
-    raise Exception('SnapBill API is currently not connected')
+    return snapbill.Connection()
+
+def fetchPassword(username=None):
+  path = os.path.expanduser('~/.snapbill.cfg')
+
+  config = ConfigParser.RawConfigParser()
+  config.read(path)
+  print path
+
+  section = username if username else 'default'
+
+
+  if username is None:
+    username = config.get(section, 'username')
+
+  password = config.get(section, 'password')
+
+  return (username, password)
 
 
 def classname(name):
@@ -23,15 +48,14 @@ def classname(name):
   """
   return '_'.join([x[:1].upper() + x[1:].lower() for x in name.split('_')])
 
-class SnapBill_Exception(Exception):
+class Error(Exception):
   def __init__(self, message, errors):
     self.message = message
     self.errors = errors
 
   def __str__(self):
     s = self.message
-    for (k,x) in self.errors.items(): s+= "\n" + ' - '+x
+    for (key, message) in self.errors.items():
+      if key: message = "[%s]: %s" % (key, message)
+      s+= "\n - %s" % message
     return s
-
-  def print_errors(self):
-    for (k,x) in self.errors.items(): print (' - '+x)
