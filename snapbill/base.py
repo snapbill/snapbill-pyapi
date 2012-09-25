@@ -69,11 +69,8 @@ class Base(object):
 
     return '/v1/'+self.type+'/'+str(vid)
 
-  def submit(self, command, data={}):
-    return self.connection.submit(self.get_uri()+'/'+command, data)
-
-  def post(self, command, data={}):
-    return self.connection.post(self.get_uri()+'/'+command, data)
+  def post(self, uri, data={}):
+    return self.connection.post(self.get_uri()+uri, data)
 
   def fetch(self):
     '''

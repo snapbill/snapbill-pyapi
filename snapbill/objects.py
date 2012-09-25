@@ -10,10 +10,10 @@ class Batch(snapbill.Base):
     self.type = 'batch'
 
   def set_state(self, state):
-    self.connection.submit('/v1/batch/'+str(self.xid)+'/set_state', {'state': state})
+    self.connection.post('/v1/batch/'+str(self.xid)+'/set_state', {'state': state})
 
   def update(self, data):
-    result = self.submit('update', data)
+    result = self.post('/update', data)
     self.gather(result['batch'], overwrite=True)
     return result
 
@@ -28,6 +28,25 @@ class Batch(snapbill.Base):
 
     return ensureConnection(connection).list('batch', search)
 
+class User(snapbill.Base):
+  '''
+  SnapBill wrapper object representing login details for a specific client or staff member
+  '''
+  def __init__(self, id, connection=None):
+    super(User, self).__init__(id, connection)
+    self.type = 'user'
+
+  @staticmethod
+  def list(search, connection=None): 
+    return ensureConnection(connection).list('user', search)
+
+  @staticmethod
+  def login(username, password, connection=None): 
+    users = User.list({"username": username, "password": password}, connection=connection)
+    if len(users) > 1: raise Exception("Failure during login (received multiple users)")
+    elif users: return users[0]
+    else: return None
+
 class Client(snapbill.Base):
   '''
   Single client in SnapBill
@@ -36,15 +55,19 @@ class Client(snapbill.Base):
     super(Client, self).__init__(id, connection)
     self.type = 'client'
 
+  def add_user(self, data):
+    result = self.post('/add_user', data)
+    return User(result['user'])
+
   def add_service(self, data):
-    result = self.submit('add_service', data)
-    return Service(result['id'])
+    result = self.post('/add_service', data)
+    return Service(result['service'])
 
   def set_payment(self, data):
-    return self.submit('set_payment', data)
+    return self.post('/set_payment', data)
 
   def update(self, data):
-    result = self.submit('update', data)
+    result = self.post('/update', data)
     self.gather(result['client'], overwrite=True)
     return result
 
@@ -73,7 +96,7 @@ class Payment(snapbill.Base):
     self.type = 'payment'
 
   def error(self, message):
-    return self.connection.post('/v1/payment/'+str(self.xid)+'/error', {'message': message}, format='xml', parse=False)
+    return self.connection.post('/v1/payment/'+str(self.xid)+'/error', {'message': message}, parse=False)
 
   @staticmethod
   def list(search, connection=None):
@@ -95,6 +118,18 @@ class Payment_Method(snapbill.Base):
   def __init__(self, id, connection=None):
     super(Payment_Method, self).__init__(id, connection)
     self.type = 'payment_method'
+
+class Service_Type(snapbill.Base):
+  '''
+  Group of a type of service
+  '''
+  def __init__(self, id, connection=None):
+    super(Service_Type, self).__init__(id, connection=connection)
+    self.type = 'service_type'
+
+  @staticmethod
+  def list(search, connection=None): 
+    return ensureConnection(connection).list('service_type', search)
 
 class Service(snapbill.Base):
   '''

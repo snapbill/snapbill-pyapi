@@ -22,7 +22,8 @@ setup(name = 'snapbill',
     packages = find_packages(),
     download_url = "http://pypi.python.org/pypi/snapbill/",
     install_requires=[
-      "simplejson>=2.0.0"
+      "simplejson>=2.0.0",
+      "requests>=0.14.0"
     ],
     classifiers = CLASSIFIERS,
     keywords = KEYWORDS,

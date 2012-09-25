@@ -1,4 +1,7 @@
 import simplejson as json
+
+import requests
+
 import urllib2, urllib
 from urllib import urlencode
 
@@ -12,8 +15,7 @@ class Connection(object):
     if password is None:
       (username, password) = fetchPassword(username)
 
-    self.username = username
-    self.password = password
+    self.auth = (username, password)
     self.server = server
     self.secure = secure
 
@@ -59,32 +61,35 @@ class Connection(object):
     if len(message) > 100: self.logger.debug(message[:100] + '...')
     else: self.logger.debug(message)
 
-  def request(self, uri, params=None, format='json', returnStream=False, parse=True):
+  def request(self, uri, params=None, returnStream=False, parse=True):
 
     # Encode the params correctly
     if params is None:
       post = None
     else:
+      # Convert data:{} into data-x
+      if 'data' in params:
+        for k,v in params['data'].iteritems():
+          params['data-'+k] = v
+        del params['data']
+
       post = self.encode_params(params)
 
     # Show some logging information
     self.debug('>>> '+self.url+uri+('?'+post if post else '') + (' '+str(self.headers) if self.headers else ''))
 
-    # Could be in __init__ but gets forgotten somehow
-    password_manager = urllib2.HTTPPasswordMgrWithDefaultRealm()
-    password_manager.add_password('SnapBill API', self.url, self.username, self.password)
-    auth_handler = urllib2.HTTPBasicAuthHandler(password_manager)
-    self.opener = urllib2.build_opener(auth_handler)
+    # If returning a stream don't prefetch
+    prefetch = not returnStream
 
-    request = urllib2.Request(self.url+uri+'.'+format, headers=self.headers)
-    try: 
-      response = self.opener.open(request, post)
-    except urllib2.HTTPError, e:
-      if e.code == 400:
-        response = e
-      else:
-        self.debug("HTTPError("+str(e.code)+"): "+str(e))
-        raise e
+    if post is not None:
+      response = requests.post(self.url + uri, data=post, auth=self.auth, headers={"content-type": "application/x-www-form-urlencoded"}, prefetch=prefetch)
+      print "POST", self.url+uri, post, response.text
+    else:
+      response = requests.get(self.url + uri, auth=self.auth, prefetch=prefetch)
+
+
+    if response.status_code not in (400, 200):
+      raise Exception('Received code %d from SnapBill: %s' % (response.status_code, response.text))
 
     if returnStream:
       if self.logger:
@@ -92,41 +97,31 @@ class Connection(object):
 
       if not parse:
         return response
-      elif format is 'json':
-        return (json.loads(x.decode('UTF-8')) for x in response)
-      elif format is 'avro':
-        if not avro:
-          raise Exception('Required avro module was not found.')
-        return avro.datafile.DataFileReader(response, avro.io.DatumReader())
-      else:
-        raise Exception('Could not parse format '+format+' as stream')
 
-    data = response.read().decode('UTF-8')
+      return (json.loads(x.decode('UTF-8')) for x in response.iter_lines())
+
+    data = response.text.decode('UTF-8')
 
     if self.logger:
       if len(data) > 100: self.logger.debug('<<< '+data[:100]+'...')
       else: self.logger.debug('<<< '+data)
 
     if parse:
-      if format == 'json': data = json.loads(data)
+      data = json.loads(data)
+
+    if response.status_code != 200:
+      if parse:
+        raise Error(data['message'], data['errors'])
+      else:
+        raise Exception('Received error code %d with un-parsed data: %s' % (response.code, data))
 
     return data
 
-  def post(self, uri, params={}, format='json', returnStream=False, parse=True):
-    return self.request(uri, params, format, returnStream, parse)
+  def get(self, uri, returnStream=False, parse=True):
+    return self.request(uri, None, returnStream, parse)
 
-  def submit(self, uri, param={}):
-    # Convert data:{} into data-x
-    if 'data' in param:
-      for k,v in param['data'].iteritems():
-        param['data-'+k] = v
-      del param['data']
-
-    result = self.post(uri,param)
-    if result['status'] == 'error':
-      raise Error(result['message'], result['errors'])
-    else:
-      return result
+  def post(self, uri, params={}, returnStream=False, parse=True):
+    return self.request(uri, params, returnStream, parse)
 
   def hasFactory(self, cls):
     return hasattr(snapbill.objects, classname(cls))
@@ -137,10 +132,6 @@ class Connection(object):
 
   def add(self, cls, data):
     result = self.post('/v1/'+cls+'/add', data)
-
-    if 'status' in result and result['status'] == 'error':
-      raise Error(result['message'], result['errors'])
-
     return self.factory(cls, result[cls])
 
   def list(self, cls, data):
