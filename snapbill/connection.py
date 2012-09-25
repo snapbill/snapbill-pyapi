@@ -83,10 +83,8 @@ class Connection(object):
 
     if post is not None:
       response = requests.post(self.url + uri, data=post, auth=self.auth, headers={"content-type": "application/x-www-form-urlencoded"}, prefetch=prefetch)
-      print "POST", self.url+uri, post, response.text
     else:
       response = requests.get(self.url + uri, auth=self.auth, prefetch=prefetch)
-
 
     if response.status_code not in (400, 200):
       raise Exception('Received code %d from SnapBill: %s' % (response.status_code, response.text))

@@ -23,11 +23,13 @@ def ensureConnection(connection):
     return snapbill.Connection()
 
 def fetchPassword(username=None):
-  path = os.path.expanduser('~/.snapbill.cfg')
+  paths = [
+    os.path.expanduser('~/.snapbill.cfg'),
+    ".snapbill.cfg",
+  ]
 
   config = ConfigParser.RawConfigParser()
-  config.read(path)
-  print path
+  for path in paths: config.read(path)
 
   section = username if username else 'default'
 
