@@ -81,10 +81,16 @@ class Connection(object):
     # If returning a stream don't prefetch
     prefetch = not returnStream
 
+    # Setup correct headers for the request
+    headers = self.headers.copy()
     if post is not None:
-      response = requests.post(self.url + uri, data=post, auth=self.auth, headers={"content-type": "application/x-www-form-urlencoded"}, prefetch=prefetch)
+      headers.update({"content-type": "application/x-www-form-urlencoded"})
+
+    kwargs = {'auth': self.auth, 'headers': headers, 'prefetch': prefetch}
+    if post is not None:
+      response = requests.post(self.url + uri, data=post, **kwargs)
     else:
-      response = requests.get(self.url + uri, auth=self.auth, prefetch=prefetch)
+      response = requests.get(self.url + uri, **kwargs)
 
     if response.status_code not in (400, 200):
       raise Exception('Received code %d from SnapBill: %s' % (response.status_code, response.text))
