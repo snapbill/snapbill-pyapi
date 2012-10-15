@@ -61,6 +61,10 @@ class Base(object):
 
       self.data[k] = v
 
+  def dump(self):
+    'Returns a dict of all known properties so far'
+    return self.data.copy()
+
   def get_uri(self):
     if 'xid' in self.data: vid = self.data['xid']
     elif 'id' in self.data: vid = self.data['id']

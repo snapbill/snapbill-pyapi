@@ -36,6 +36,11 @@ class User(snapbill.Base):
     super(User, self).__init__(id, connection)
     self.type = 'user'
 
+  def update(self, data):
+    result = self.post('/update', data)
+    self.gather(result['user'], overwrite=True)
+    return result
+
   @staticmethod
   def list(search, connection=None): 
     return ensureConnection(connection).list('user', search)
@@ -118,6 +123,18 @@ class Payment_Method(snapbill.Base):
   def __init__(self, id, connection=None):
     super(Payment_Method, self).__init__(id, connection)
     self.type = 'payment_method'
+
+class Package(snapbill.Base):
+  '''
+  Group of packages for a service_type
+  '''
+  def __init__(self, id, connection=None):
+    super(Package, self).__init__(id, connection=connection)
+    self.type = 'package'
+
+  @staticmethod
+  def list(search, connection=None): 
+    return ensureConnection(connection).list('package', search)
 
 class Service_Type(snapbill.Base):
   '''
