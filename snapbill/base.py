@@ -30,7 +30,7 @@ class Base(object):
     if 'data' in self.__dict__: return
 
     # Initialise basic values
-    self.data = {}
+    self._data = {}
     self.connection = ensureConnection(connection)
 
     # Pull out the id, and gather known values
@@ -56,22 +56,22 @@ class Base(object):
         if v: v = self.connection.factory(k, v)
         else: v = None
 
-      if (not overwrite) and (k != "depth") and (k in self.data) and (self.data[k] != v):
-        raise Exception('Gathered data for '+k+' of '+str(data[k])+' does not match existing value of '+str(self.data[k]))
+      if (not overwrite) and (k != "depth") and (k in self._data) and (self._data[k] != v):
+        raise Exception('Gathered data for '+k+' of '+str(data[k])+' does not match existing value of '+str(self._data[k]))
 
-      self.data[k] = v
+      self._data[k] = v
 
   def dump(self):
     'Returns a dict of all known properties so far'
-    return self.data.copy()
+    return self._data.copy()
 
   def get_uri(self):
-    if 'xid' in self.data: vid = self.data['xid']
-    elif 'id' in self.data: vid = self.data['id']
-    elif 'code' in self.data: vid = self.data['code']
+    if 'xid' in self._data: vid = self._data['xid']
+    elif 'id' in self._data: vid = self._data['id']
+    elif 'code' in self._data: vid = self._data['code']
     else: raise Exception('Could not find id for object')
 
-    return '/v1/'+self.type+'/'+str(vid)
+    return '/v1/'+self._type+'/'+str(vid)
 
   def post(self, uri, data={}):
     return self.connection.post(self.get_uri()+uri, data)
@@ -81,22 +81,22 @@ class Base(object):
     Fetch complete list of data from the api
     '''
     result = self.post('/get')
-    self.gather(result[self.type]) 
+    self.gather(result[self._type]) 
     self.fetched = True
 
   def __getitem__(self, key):
     return self.__getattr__(key)
 
   def __getattr__(self, key):
-    if key in self.data:
-      return self.data[key]
-    elif key+'_id' in self.data:
-      return self.connection.factory(key, self.data[key+'_id'])
+    if key in self._data:
+      return self._data[key]
+    elif key+'_id' in self._data:
+      return self.connection.factory(key, self._data[key+'_id'])
     elif not self.fetched:
-      self.connection.debug('Missing '+self.type+'.'+str(key)+'; fetching full object')
+      self.connection.debug('Missing '+self._type+'.'+str(key)+'; fetching full object')
       self.fetch()
       return self.__getattr__(key)
 
-    raise AttributeError(key+" on "+self.type+" #"+str(self.id)+" not found.")
+    raise AttributeError(key+" on "+self._type+" #"+str(self.id)+" not found.")
 
 

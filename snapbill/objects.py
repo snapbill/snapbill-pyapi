@@ -7,7 +7,7 @@ class Batch(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Batch, self).__init__(id, connection=connection)
-    self.type = 'batch'
+    self._type = 'batch'
 
   def set_state(self, state):
     self.connection.post('/v1/batch/'+str(self.xid)+'/set_state', {'state': state})
@@ -34,7 +34,7 @@ class User(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(User, self).__init__(id, connection)
-    self.type = 'user'
+    self._type = 'user'
 
   def update(self, data):
     result = self.post('/update', data)
@@ -58,7 +58,7 @@ class Client(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Client, self).__init__(id, connection)
-    self.type = 'client'
+    self._type = 'client'
 
   def add_user(self, data):
     result = self.post('/add_user', data)
@@ -86,7 +86,7 @@ class File(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(File, self).__init__(id, connection)
-    self.type = 'file'
+    self._type = 'file'
 
   @staticmethod
   def add(data, connection=None):
@@ -98,7 +98,7 @@ class Payment(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Payment, self).__init__(id, connection)
-    self.type = 'payment'
+    self._type = 'payment'
 
   def error(self, message):
     return self.connection.post('/v1/payment/'+str(self.xid)+'/error', {'message': message}, parse=False)
@@ -117,12 +117,12 @@ class Payment_Details(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Payment_Details, self).__init__(id, connection)
-    self.type = 'payment_details'
+    self._type = 'payment_details'
 
 class Payment_Method(snapbill.Base):
   def __init__(self, id, connection=None):
     super(Payment_Method, self).__init__(id, connection)
-    self.type = 'payment_method'
+    self._type = 'payment_method'
 
 class Package(snapbill.Base):
   '''
@@ -130,7 +130,7 @@ class Package(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Package, self).__init__(id, connection=connection)
-    self.type = 'package'
+    self._type = 'package'
 
   @staticmethod
   def list(search, connection=None): 
@@ -142,7 +142,7 @@ class Service_Type(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Service_Type, self).__init__(id, connection=connection)
-    self.type = 'service_type'
+    self._type = 'service_type'
 
   @staticmethod
   def list(search, connection=None): 
@@ -154,7 +154,7 @@ class Service(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Service, self).__init__(id, connection)
-    self.type = 'service'
+    self._type = 'service'
 
 class Currency(snapbill.Base):
   '''
@@ -162,7 +162,7 @@ class Currency(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Currency, self).__init__(id, connection)
-    self.type = 'currency'
+    self._type = 'currency'
 
 class Account(snapbill.Base):
   '''
@@ -170,7 +170,7 @@ class Account(snapbill.Base):
   '''
   def __init__(self, id, connection=None):
     super(Account, self).__init__(id, connection=connection)
-    self.type = 'account'
+    self._type = 'account'
 
   @staticmethod
   def list(search, connection=None): 
