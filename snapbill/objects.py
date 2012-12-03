@@ -76,9 +76,22 @@ class Client(snapbill.Base):
     self.gather(result['client'], overwrite=True)
     return result
 
+  def lost_password(self):
+    result = self.post('/lost_password')
+    email = self.connection.factory('email', result['email'])
+    return email
+
   @staticmethod
   def add(data, connection=None):
     return ensureConnection(connection).add('client', data)
+
+class Email(snapbill.Base):
+  '''
+  Email that was sent to the client
+  '''
+  def __init__(self, id, connection=None):
+    super(Email, self).__init__(id, connection)
+    self._type = 'email'
 
 class File(snapbill.Base):
   '''
