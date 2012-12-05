@@ -32,6 +32,7 @@ class Base(object):
     # Initialise basic values
     self._data = {}
     self.connection = ensureConnection(connection)
+    self._type = self.__class__.__name__.lower()
 
     # Pull out the id, and gather known values
     if type(id) is dict:
