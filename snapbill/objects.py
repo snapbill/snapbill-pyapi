@@ -85,6 +85,10 @@ class Client(snapbill.Base):
   def add(data, connection=None):
     return ensureConnection(connection).add('client', data)
 
+  @staticmethod
+  def list(search, connection=None):
+    return ensureConnection(connection).list('client', search)
+
 class Email(snapbill.Base):
   '''
   Email that was sent to the client
