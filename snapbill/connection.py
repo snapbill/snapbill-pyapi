@@ -6,7 +6,9 @@ import urllib2, urllib
 from urllib import urlencode
 
 from util import Error, setConnection, classname, fetchPassword
+
 import snapbill.objects
+import snapbill.exceptions
 
 class Connection(object):
   def __init__(self,username=None, password=None, server='api.snapbill.com', secure=True, headers={}, logger=None):
@@ -23,8 +25,12 @@ class Connection(object):
     else: self.url = 'http://' + server
 
     self._cache = {}
-    self.headers = headers
     self.logger = logger
+
+    self.headers = {
+        'Accept': 'application/json'
+      }
+    self.headers.update(headers)
 
     setConnection(self)
 
@@ -92,9 +98,6 @@ class Connection(object):
     else:
       response = requests.get(self.url + uri, **kwargs)
 
-    if response.status_code not in (400, 200):
-      raise Exception('Received code %d from SnapBill: %s' % (response.status_code, response.text))
-
     if returnStream:
       if self.logger:
         self.logger.debug('<<< [data stream]')
@@ -104,22 +107,42 @@ class Connection(object):
 
       return (json.loads(x.decode('UTF-8')) for x in response.iter_lines())
 
-    data = response.text.decode('UTF-8')
+    body = response.text.decode('UTF-8')
 
     if self.logger:
       if len(data) > 100: self.logger.debug('<<< '+data[:100]+'...')
       else: self.logger.debug('<<< '+data)
 
     if parse:
-      data = json.loads(data)
+      data = json.loads(body)
 
-    if response.status_code != 200:
-      if parse:
-        raise Error(data['message'], data['errors'])
+      # Data has now been parsed from SnapBill
+      if response.status_code // 100 == 2:
+        return data
+      elif response.status_code // 100 == 5:
+        raise snapbill.exceptions.InternalError(response.status_code, body, 
+            data['message']
+          )
+      elif response.status_code == 404:
+        raise snapbill.exceptions.CommandNotFound(response.status_code, body, 
+            data['message']
+          )
       else:
-        raise Exception('Received error code %d with un-parsed data: %s' % (response.code, data))
+        raise snapbill.exceptions.FormErrors(response.status_code, body, 
+            data['message'], data['errors']
+          )
 
-    return data
+    else:
+      # Deal with responses of unparsed data
+      if response.status_code // 100 == 2:
+        return body
+      elif response.status_code // 100 == 5:
+        raise snapbill.exceptions.InternalError(response.status_code, body, 
+            'SnapBill encountered an internal error while processing the request.'
+          )
+      else:
+        raise snapbill.exceptions.HTTPError(response.status_code, body)
+
 
   def get(self, uri, returnStream=False, parse=True):
     return self.request(uri, None, returnStream, parse)
