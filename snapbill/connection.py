@@ -78,15 +78,16 @@ class Connection(object):
     # Show some logging information
     self.debug('>>> '+self.url+uri+('?'+post if post else '') + (' '+str(self.headers) if self.headers else ''))
 
-    # If returning a stream don't prefetch
-    prefetch = not returnStream
-
     # Setup correct headers for the request
     headers = self.headers.copy()
     if post is not None:
       headers.update({"content-type": "application/x-www-form-urlencoded"})
 
-    kwargs = {'auth': self.auth, 'headers': headers, 'prefetch': prefetch}
+    kwargs = {'auth': self.auth, 'headers': headers}
+    
+    # Stream the request if requested
+    if returnStream: kwargs['stream'] = True
+
     if post is not None:
       response = requests.post(self.url + uri, data=post, **kwargs)
     else:
