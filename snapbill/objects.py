@@ -117,9 +117,6 @@ class Payment(snapbill.Base):
     super(Payment, self).__init__(id, connection)
     self._type = 'payment'
 
-  def error(self, message):
-    return self.connection.post('/v1/payment/'+str(self.xid)+'/error', {'message': message}, parse=False)
-
   @staticmethod
   def list(search, connection=None):
     if 'client' in search and type(search['client']) is Client:
