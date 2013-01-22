@@ -15,7 +15,7 @@ KEYWORDS = 'snapbill api wrapper'
 
 
 setup(name = 'snapbill',
-    version = "0.2",
+    version = "0.2.1",
     description = """Wrapper for the SnapBill v1 API.""",
     author = "Josh Yudaken",
     url = "https://github.com/snapbill/snapbill-pyapi",
