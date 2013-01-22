@@ -111,8 +111,8 @@ class Connection(object):
     body = response.text.decode('UTF-8')
 
     if self.logger:
-      if len(data) > 100: self.logger.debug('<<< '+data[:100]+'...')
-      else: self.logger.debug('<<< '+data)
+      if len(body) > 100: self.logger.debug('<<< '+body[:100]+'...')
+      else: self.logger.debug('<<< '+body)
 
     if parse:
       data = json.loads(body)
